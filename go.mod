@@ -6,18 +6,19 @@ require (
 	github.com/dfuse-io/dfuse-eosio v0.9.0-beta9.0.20210812023750-17e5f52111ab
 	github.com/golang/protobuf v1.5.2
 	github.com/pingcap/log v0.0.0-20210625125904-98ed8e2eb1c7
-	github.com/streamingfast/bstream v0.0.2-0.20210901144836-9a626db444c5
-	github.com/streamingfast/dauth v0.0.0-20210811181149-e8fd545948cc
-	github.com/streamingfast/dgrpc v0.0.0-20210901144702-c57c3701768b
-	github.com/streamingfast/dmetering v0.0.0-20210812002943-aa53fa1ce172
+	github.com/streamingfast/bstream v0.0.2-0.20220301162141-6630bbe5996c
+	github.com/streamingfast/dauth v0.0.0-20210812020920-1c83ba29add1
+	github.com/streamingfast/dgrpc v0.0.0-20220301153539-536adf71b594
+	github.com/streamingfast/dmetering v0.0.0-20220301165106-a642bb6a21bd
 	github.com/streamingfast/dmetrics v0.0.0-20210811180524-8494aeb34447
-	github.com/streamingfast/dstore v0.1.1-0.20210811180812-4db13e99cc22
-	github.com/streamingfast/logging v0.0.0-20210811175431-f3b44b61606a
-	github.com/streamingfast/pbgo v0.0.6-0.20210820205306-ba5335146052
+	github.com/streamingfast/dstore v0.1.1-0.20220203133825-30eb2f9c5cd3
+	github.com/streamingfast/logging v0.0.0-20220222131651-12c3943aac2e
+	github.com/streamingfast/pbgo v0.0.6-0.20220228185940-1bbaafec7d8a
 	github.com/streamingfast/shutter v1.5.0
-	go.uber.org/atomic v1.7.0
-	go.uber.org/zap v1.17.0
-	google.golang.org/grpc v1.39.1
+	github.com/stretchr/testify v1.7.0
+	go.uber.org/atomic v1.9.0
+	go.uber.org/zap v1.21.0
+	google.golang.org/grpc v1.44.0
 	google.golang.org/protobuf v1.27.1
 )
 

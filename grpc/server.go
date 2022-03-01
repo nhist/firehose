@@ -5,19 +5,22 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/pingcap/log"
+
+	"github.com/streamingfast/bstream/transform"
+
 	"strings"
 	"time"
 
 	pbcodec "github.com/dfuse-io/dfuse-eosio/pb/dfuse/eosio/codec/v1"
 	"github.com/streamingfast/bstream"
-	blockstream "github.com/streamingfast/bstream/blockstream/v2"
 	dauth "github.com/streamingfast/dauth/authenticator"
 	redisAuth "github.com/streamingfast/dauth/authenticator/redis"
 	"github.com/streamingfast/dgrpc"
 	"github.com/streamingfast/dmetering"
 	"github.com/streamingfast/dstore"
 	"github.com/streamingfast/firehose"
-	pbbstream "github.com/streamingfast/pbgo/dfuse/bstream/v1"
+	pbbstream "github.com/streamingfast/firehose/pb/dfuse/bstream/v1"
+	pbfirehose "github.com/streamingfast/pbgo/sf/firehose/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -33,24 +36,30 @@ func NewServer(
 	logger *zap.Logger,
 	authenticator dauth.Authenticator,
 	blocksStores []dstore.Store,
-	filterPreprocessorFactory firehose.FilterPreprocessorFactory,
+	irrBlkIdxStore dstore.Store,
+	writeIrrBlkIdx bool,
+	irrBlkIdxBundleSizes []uint64,
 	isReady func(context.Context) bool,
 	listenAddr string,
 	liveSourceFactory bstream.SourceFactory,
 	liveHeadTracker bstream.BlockRefGetter,
 	tracker *bstream.Tracker,
 	trimmer blockstream.BlockTrimmer,
+	transformRegistry *transform.Registry,
 	network string,
 ) *Server {
 	liveSupport := liveSourceFactory != nil && liveHeadTracker != nil
 	logger.Info("setting up blockstream server (v2)", zap.Bool("live_support", liveSupport))
-	blockStreamService := blockstream.NewServer(
+	firehoseStreamService := firehose.NewServer(
 		logger,
 		blocksStores,
+		irrBlkIdxStore,
+		writeIrrBlkIdx,
+		irrBlkIdxBundleSizes,
 		liveSourceFactory,
 		liveHeadTracker,
 		tracker,
-		trimmer,
+		transformRegistry,
 	)
 
 	// The preprocessing handler must always be applied even when a cursor is used and there is blocks to process
@@ -116,6 +125,15 @@ func NewServer(
 			}, ctx)
 			//////////////////////////////////////////////////////////////////////
 		}
+	firehoseStreamService.SetPostHook(func(ctx context.Context, response *pbfirehose.Response) {
+		//////////////////////////////////////////////////////////////////////
+		dmetering.EmitWithContext(dmetering.Event{
+			Source:      "firehose",
+			Kind:        "gRPC Stream",
+			Method:      "Blocks",
+			EgressBytes: int64(proto.Size(response)),
+		}, ctx)
+		//////////////////////////////////////////////////////////////////////
 	})
 
 	options := []dgrpc.ServerOption{
@@ -135,7 +153,11 @@ func NewServer(
 
 	logger.Info("registering grpc services")
 	grpcServer.RegisterService(func(gs *grpc.Server) {
-		pbbstream.RegisterBlockStreamV2Server(gs, blockStreamService)
+		pbfirehose.RegisterStreamServer(gs, firehoseStreamService)
+
+		// Legacy support the old BlockStreamV2 api
+		legacyBstreamV2Proxy := firehose.NewLegacyBstreamV2Proxy(firehoseStreamService)
+		pbbstream.RegisterBlockStreamV2Server(gs, legacyBstreamV2Proxy)
 	})
 
 	return &Server{

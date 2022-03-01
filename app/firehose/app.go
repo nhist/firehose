@@ -19,37 +19,39 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/streamingfast/bstream/transform"
+
 	"github.com/streamingfast/bstream"
 	"github.com/streamingfast/bstream/blockstream"
-	blockstreamv2 "github.com/streamingfast/bstream/blockstream/v2"
 	"github.com/streamingfast/bstream/hub"
+	dauth "github.com/streamingfast/dauth/authenticator"
 	"github.com/streamingfast/dmetrics"
 	"github.com/streamingfast/dstore"
-	"github.com/streamingfast/firehose"
 	"github.com/streamingfast/firehose/grpc"
 	"github.com/streamingfast/shutter"
-	dauth "github.com/streamingfast/dauth/authenticator"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
 
 type Config struct {
-	BlockStoreURLs          []string      // Blocks store
-	BlockStreamAddr         string        // gRPC endpoint to get real-time blocks, can be "" in which live streams is disabled
-	GRPCListenAddr          string        // gRPC address where this app will listen to
-	GRPCShutdownGracePeriod time.Duration // The duration we allow for gRPC connections to terminate gracefully prior forcing shutdown
-	RealtimeTolerance       time.Duration
+	BlockStoreURLs                  []string // Blocks store
+	IrreversibleBlocksIndexStoreURL string
+	WriteIrreversibleBlocksIndex    bool
+	IrreversibleBlocksBundleSizes   []uint64
+	BlockStreamAddr                 string        // gRPC endpoint to get real-time blocks, can be "" in which live streams is disabled
+	GRPCListenAddr                  string        // gRPC address where this app will listen to
+	GRPCShutdownGracePeriod         time.Duration // The duration we allow for gRPC connections to terminate gracefully prior forcing shutdown
+	RealtimeTolerance               time.Duration
 	Network                 string
 }
 
 type Modules struct {
 	// Required dependencies
-	Authenticator             dauth.Authenticator
-	BlockTrimmer              blockstreamv2.BlockTrimmer
-	FilterPreprocessorFactory firehose.FilterPreprocessorFactory
-	HeadTimeDriftMetric       *dmetrics.HeadTimeDrift
-	HeadBlockNumberMetric     *dmetrics.HeadBlockNum
-	Tracker                   *bstream.Tracker
+	Authenticator         dauth.Authenticator
+	HeadTimeDriftMetric   *dmetrics.HeadTimeDrift
+	HeadBlockNumberMetric *dmetrics.HeadBlockNum
+	Tracker               *bstream.Tracker
+	TransformRegistry     *transform.Registry
 }
 
 type App struct {
@@ -93,6 +95,15 @@ func (a *App) Run() error {
 		blockStores[i] = store
 	}
 
+	var store dstore.Store
+	if url := a.config.IrreversibleBlocksIndexStoreURL; url != "" {
+		var err error
+		store, err = dstore.NewStore(url, "", "", false)
+		if err != nil {
+			return fmt.Errorf("failed setting up irreversible blocks index store from url %q: %w", url, err)
+		}
+	}
+
 	withLive := a.config.BlockStreamAddr != ""
 
 	var subscriptionHub *hub.SubscriptionHub
@@ -117,13 +128,16 @@ func (a *App) Run() error {
 		a.logger,
 		a.modules.Authenticator,
 		blockStores,
-		a.modules.FilterPreprocessorFactory,
+		store,
+		a.config.WriteIrreversibleBlocksIndex,
+		a.config.IrreversibleBlocksBundleSizes,
 		a.IsReady,
 		a.config.GRPCListenAddr,
 		serverLiveSourceFactory,
 		serverLiveHeadTracker,
 		a.modules.Tracker,
 		a.modules.BlockTrimmer,
+		a.modules.TransformRegistry,
 		a.config.Network,
 	)
 
@@ -203,7 +217,6 @@ func (a *App) newSubscriptionHub(ctx context.Context, blockStores []dstore.Store
 		liveSourceFactory,
 		hub.Withlogger(a.logger),
 		hub.WithRealtimeTolerance(a.config.RealtimeTolerance),
-		hub.WithoutMemoization(), // This should be tweakable on the Hub, by the bstreamv2.Server
 	)
 }
 
