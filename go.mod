@@ -5,7 +5,6 @@ go 1.15
 require (
 	github.com/dfuse-io/dfuse-eosio v0.9.0-beta9.0.20210812023750-17e5f52111ab
 	github.com/golang/protobuf v1.5.2
-	github.com/pingcap/log v0.0.0-20210625125904-98ed8e2eb1c7
 	github.com/streamingfast/bstream v0.0.2-0.20220301162141-6630bbe5996c
 	github.com/streamingfast/dauth v0.0.0-20210812020920-1c83ba29add1
 	github.com/streamingfast/dgrpc v0.0.0-20220301153539-536adf71b594

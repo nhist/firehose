@@ -2,16 +2,11 @@ package grpc
 
 import (
 	"context"
-	"fmt"
+	pbcodec "github.com/dfuse-io/dfuse-eosio/pb/dfuse/eosio/codec/v1"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/pingcap/log"
-
 	"github.com/streamingfast/bstream/transform"
-
-	"strings"
 	"time"
 
-	pbcodec "github.com/dfuse-io/dfuse-eosio/pb/dfuse/eosio/codec/v1"
 	"github.com/streamingfast/bstream"
 	dauth "github.com/streamingfast/dauth/authenticator"
 	redisAuth "github.com/streamingfast/dauth/authenticator/redis"
@@ -24,6 +19,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"strings"
 )
 
 type Server struct {
@@ -62,19 +58,73 @@ func NewServer(
 		transformRegistry,
 	)
 
-	// The preprocessing handler must always be applied even when a cursor is used and there is blocks to process
-	// between the LIB and the Head Block. While the downstream consumer will not necessarly received them, they must
-	// be pre-processed to ensure undos can be sent back if needed.
-	blockStreamService.SetPreprocFactory(func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error) {
-		preprocessor, err := filterPreprocessorFactory(req.IncludeFilterExpr, req.ExcludeFilterExpr)
-		if err != nil {
-			return nil, fmt.Errorf("filter preprocessor factory: %w", err)
-		}
+	/*
+		// The preprocessing handler must always be applied even when a cursor is used and there is blocks to process
+		// between the LIB and the Head Block. While the downstream consumer will not necessarly received them, they must
+		// be pre-processed to ensure undos can be sent back if needed.
+		blockStreamService.SetPreprocFactory(func(req *pbbstream.BlocksRequestV2) (bstream.PreprocessFunc, error) {
+			preprocessor, err := filterPreprocessorFactory(req.IncludeFilterExpr, req.ExcludeFilterExpr)
+			if err != nil {
+				return nil, fmt.Errorf("filter preprocessor factory: %w", err)
+			}
 
-		return preprocessor, nil
-	})
+			return preprocessor, nil
+		})
 
-	blockStreamService.SetPostHook(func(ctx context.Context, response *pbbstream.BlockResponseV2) {
+		blockStreamService.SetPostHook(func(ctx context.Context, response *pbbstream.BlockResponseV2) {
+
+			block := &pbcodec.Block{}
+			err := ptypes.UnmarshalAny(response.Block, block)
+
+			if err != nil {
+				logger.Warn("failed to unmarshal block", zap.Error(err))
+			} else {
+				creds := dauth.GetCredentials(ctx)
+				rate := 10
+				hasNetworkRateAssigned := false
+
+				switch c := creds.(type) {
+				case *redisAuth.Credentials:
+					for _, n := range c.Networks {
+						if n.Name == network {
+							hasNetworkRateAssigned = true
+							rate = n.Rate
+							break
+						}
+					}
+				}
+
+				if !hasNetworkRateAssigned {
+					logger.Error("access token is missing network based rate limit, assigning 10", zap.Any("credentials", creds))
+				}
+
+				blockTime, err := block.Time()
+
+				// we slow down throughput if the allowed doc quota is not unlimited ("0"), unless it's live blocks (< 5 min)
+				if err == nil && time.Since(blockTime) > 5*time.Minute && rate > 0 {
+					sleep := time.Duration(1000/rate) * time.Millisecond
+					logger.Debug("rate limited, adding sleep", zap.Int("rate", rate), zap.Duration("sleep", sleep), zap.Time("block_time", blockTime))
+					time.Sleep(sleep)
+				} else {
+					if err != nil {
+						log.Warn("failed to parse time from block", zap.Error(err))
+					}
+					logger.Debug("allowing unthrottled access", zap.Int("rate", rate), zap.Time("block_time", blockTime))
+				}
+
+				//////////////////////////////////////////////////////////////////////
+				dmetering.EmitWithContext(dmetering.Event{
+					Source:         "firehose",
+					Kind:           "gRPC Stream",
+					Method:         "Blocks",
+					EgressBytes:    int64(proto.Size(response)),
+					ResponsesCount: 1,
+				}, ctx)
+				//////////////////////////////////////////////////////////////////////
+			}
+		})*/
+
+	firehoseStreamService.SetPostHook(func(ctx context.Context, response *pbfirehose.Response) {
 
 		block := &pbcodec.Block{}
 		err := ptypes.UnmarshalAny(response.Block, block)
@@ -110,30 +160,20 @@ func NewServer(
 				time.Sleep(sleep)
 			} else {
 				if err != nil {
-					log.Warn("failed to parse time from block", zap.Error(err))
+					logger.Warn("failed to parse time from block", zap.Error(err))
 				}
 				logger.Debug("allowing unthrottled access", zap.Int("rate", rate), zap.Time("block_time", blockTime))
 			}
 
 			//////////////////////////////////////////////////////////////////////
 			dmetering.EmitWithContext(dmetering.Event{
-				Source:         "firehose",
-				Kind:           "gRPC Stream",
-				Method:         "Blocks",
+				Source:      "firehose",
+				Kind:        "gRPC Stream",
+				Method:      "Blocks",
 				EgressBytes: int64(proto.Size(response)),
-				ResponsesCount: 1,
 			}, ctx)
 			//////////////////////////////////////////////////////////////////////
 		}
-	firehoseStreamService.SetPostHook(func(ctx context.Context, response *pbfirehose.Response) {
-		//////////////////////////////////////////////////////////////////////
-		dmetering.EmitWithContext(dmetering.Event{
-			Source:      "firehose",
-			Kind:        "gRPC Stream",
-			Method:      "Blocks",
-			EgressBytes: int64(proto.Size(response)),
-		}, ctx)
-		//////////////////////////////////////////////////////////////////////
 	})
 
 	options := []dgrpc.ServerOption{
