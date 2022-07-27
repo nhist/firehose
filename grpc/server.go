@@ -75,7 +75,7 @@ func NewServer(
 			creds := dauth.GetCredentials(ctx)
 			rate := 10
 			hasNetworkRateAssigned := false
-
+/*
 			switch c := creds.(type) {
 			case *redisAuth.Credentials:
 				for _, n := range c.Networks {
@@ -90,7 +90,7 @@ func NewServer(
 			if !hasNetworkRateAssigned {
 				logger.Error("access token is missing network based rate limit, assigning 10", zap.Any("credentials", creds))
 			}
-
+*/
 			blockTime, err := block.Time()
 
 			// we slow down throughput if the allowed doc quota is not unlimited ("0"), unless it's live blocks (< 5 min)
