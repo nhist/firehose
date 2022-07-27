@@ -71,10 +71,10 @@ func NewServer(
 		if err != nil {
 			logger.Warn("failed to unmarshal block", zap.Error(err))
 		} else {
-			creds := dauth.GetCredentials(ctx)
 			rate := 10
-			hasNetworkRateAssigned := false
 /*
+			creds := dauth.GetCredentials(ctx)
+			hasNetworkRateAssigned := false
 			switch c := creds.(type) {
 			case *redisAuth.Credentials:
 				for _, n := range c.Networks {
