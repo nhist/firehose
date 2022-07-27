@@ -12,7 +12,6 @@ import (
 	"github.com/streamingfast/bstream"
 	blockstream "github.com/streamingfast/bstream/blockstream/v2"
 	dauth "github.com/streamingfast/dauth/authenticator"
-	redisAuth "github.com/streamingfast/dauth/authenticator/redis"
 	"github.com/streamingfast/dgrpc"
 	"github.com/streamingfast/dmetering"
 	"github.com/streamingfast/dstore"
